@@ -23,6 +23,7 @@ except ImportError as error:
 
 import build_mod
 from patch_money_slider import build as patch_executable, verify as verify_executable
+from patch_ra2_money_slider import build as patch_ra2_executable, verify as verify_ra2_executable
 
 
 def mix_file(path, nested=None):
@@ -43,8 +44,13 @@ def extract_stock(game, variant, source):
     local = mix_file(game / 'ra2.mix', 'local.mix')
     for name in ['rules.ini', 'ai.ini', 'art.ini']:
         (source / name).write_bytes(local[name])
-    language = mix_file(game / 'language.mix')
-    (source / 'ra2.csf').write_bytes(language['ra2.csf'])
+    def original_csf(name, mix_name, state_name):
+        state_file = game / 'StartAttackMOD' / f'state-{state_name}.json'
+        state = json.loads(state_file.read_text(encoding='utf-8-sig')) if state_file.exists() else None
+        original = Path(state['backupDirectory']) / name if state and state['active'] else game / name
+        return original.read_bytes() if original.is_file() else mix_file(game / mix_name)[name]
+
+    (source / 'ra2.csf').write_bytes(original_csf('ra2.csf', 'language.mix', 'RA2'))
     cache = mix_file(game / 'ra2.mix', 'cache.mix')
     (graphics / 'cameo.pal').write_bytes(cache['cameo.pal'])
     generic = mix_file(game / 'ra2.mix', 'generic.mix')
@@ -55,8 +61,7 @@ def extract_stock(game, variant, source):
         local_md = mix_file(game / 'ra2md.mix', 'localmd.mix')
         for name in ['rulesmd.ini', 'aimd.ini', 'artmd.ini']:
             (source / name).write_bytes(local_md[name])
-        language_md = mix_file(game / 'langmd.mix')
-        (source / 'ra2md.csf').write_bytes(language_md['ra2md.csf'])
+        (source / 'ra2md.csf').write_bytes(original_csf('ra2md.csf', 'langmd.mix', 'YR'))
 
 
 def build_package(game, variant):
@@ -83,11 +88,17 @@ def build_package(game, variant):
         original = Path(state['backupDirectory']) / 'gamemd.exe' if state and state['active'] else game / 'gamemd.exe'
         patch_executable(original, target / 'gamemd.exe')
         print(verify_executable(target / 'gamemd.exe'))
+    else:
+        state_file = game / 'StartAttackMOD' / 'state-RA2.json'
+        state = json.loads(state_file.read_text(encoding='utf-8-sig')) if state_file.exists() else None
+        original = Path(state['backupDirectory']) / 'game.exe' if state and state['active'] else game / 'game.exe'
+        patch_ra2_executable(original, target / 'game.exe')
+        print(verify_ra2_executable(target / 'game.exe'))
     return output, title
 
 
-def repair_saved_credits(game):
-    settings = game / 'RA2MD.INI'
+def repair_saved_credits(game, variant):
+    settings = game / ('RA2MD.INI' if variant == 'YR' else 'RA2.INI')
     if not settings.exists():
         return
     text = settings.read_bytes().decode('latin1')
@@ -99,7 +110,7 @@ def repair_saved_credits(game):
         return
     saved = game / 'StartAttackMOD' / '更新时保存'
     saved.mkdir(parents=True, exist_ok=True)
-    backup = saved / f"RA2MD.INI-before-credit-fix-{datetime.now():%Y%m%d-%H%M%S}.ini"
+    backup = saved / f"{settings.stem}-before-credit-fix-{datetime.now():%Y%m%d-%H%M%S}.ini"
     if backup.exists():
         raise FileExistsError(backup)
     shutil.copy2(settings, backup)
@@ -126,8 +137,7 @@ def install(game, variant, output, title):
         shutil.copy2(file, destination / file.name)
     subprocess.run(['pwsh', '-NoProfile', '-File', str(script), '-Action', 'Enable',
                     '-Variant', variant, '-GameDirectory', str(game)], check=True)
-    if variant == 'YR':
-        repair_saved_credits(game)
+    repair_saved_credits(game, variant)
     return managed
 
 

@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 
 function Invoke-ModChange {
     $target = [IO.Path]::GetFullPath($GameDirectory).TrimEnd('\')
-    $processNames = @('gamemd', 'game', 'ra2md', 'ra2', 'yuri')
+    $processNames = if ($Variant -eq 'YR') { @('gamemd', 'ra2md', 'yuri') } else { @('game', 'ra2') }
     if (Get-Process -Name $processNames -ErrorAction SilentlyContinue) {
         throw '请先退出红警2和尤里的复仇，再切换 MOD。'
     }

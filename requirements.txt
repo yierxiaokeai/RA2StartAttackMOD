@@ -1,0 +1,5 @@
+ra2mix==1.0.4
+blowfish==0.6.1
+ra2csf==0.0.3
+pefile==2024.8.26
+capstone==5.0.9

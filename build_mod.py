@@ -16,6 +16,7 @@ MARKER = 'SGSTART'
 COMPARATOR = '0100000003000000' + '0' * 48
 TANKS = {'APOC', 'HTNK', 'LTNK', 'MGTK', 'MIND', 'MTNK',
          'ROBO', 'SREF', 'TELE', 'TNKD', 'TTNK', 'YTNK'}
+INFANTRY_TEAM_CAP = 30
 DEFENSE_COUNT_KEYS = ('AlliedBaseDefenseCounts', 'SovietBaseDefenseCounts',
                       'ThirdBaseDefenseCounts')
 RAID_UNITS = {'CAOS', 'CCOMAND', 'CLEG', 'DRON', 'DTRUCK', 'ENGINEER',
@@ -93,6 +94,27 @@ def is_raid_team(ai, team):
     # Ordinary Soviet/Yuri assaults also use actions 61/63 to occupy bunkers en route.
     return (bool(members & RAID_UNITS) or any(token in name for token in RAID_NAMES)
             or bool(actions & {14, 57, 60, 62}))
+
+
+def infantry_counts(counts):
+    scaled = {key: count * 4 for key, count in counts.items()}
+    if sum(scaled.values()) <= INFANTRY_TEAM_CAP:
+        return scaled
+    if len(counts) > INFANTRY_TEAM_CAP:
+        raise ValueError('Too many infantry types for team cap')
+    total = sum(counts.values())
+    result = {key: max(1, INFANTRY_TEAM_CAP * count // total)
+              for key, count in counts.items()}
+    while sum(result.values()) > INFANTRY_TEAM_CAP:
+        key = max((item for item in result if result[item] > 1),
+                  key=lambda item: (result[item] * total - INFANTRY_TEAM_CAP * counts[item],
+                                    -int(item)))
+        result[key] -= 1
+    while sum(result.values()) < INFANTRY_TEAM_CAP:
+        key = max(result, key=lambda item: (INFANTRY_TEAM_CAP * counts[item]
+                                             - result[item] * total, -int(item)))
+        result[key] += 1
+    return result
 
 
 def patch_rules(text):
@@ -245,6 +267,12 @@ def strengthen_ai(text, rules_text):
         role = 'attack' if 'attack' in uses else 'kirov' if 'raid' in uses and has_kirov else None
         if role is None:
             continue
+        infantry_plan = (
+            infantry_counts({key: int(entry.split(',')[0])
+                             for key, entry in ai[source].items()
+                             if key.isdigit() and entry.split(',')[1] in infantry_types})
+            if role == 'attack' else {}
+        )
         teams_for_role = uses['attack' if role == 'attack' else 'raid']
         if role == 'kirov':
             kirov_raid_teams.update(teams_for_role)
@@ -275,7 +303,7 @@ def strengthen_ai(text, rules_text):
             if unit == 'ZEP':
                 new_count = 5
             elif role == 'attack' and unit in infantry_types:
-                new_count = count * 4
+                new_count = infantry_plan[key]
             elif role == 'attack' and unit in TANKS:
                 if unit not in vehicle_types:
                     raise ValueError(f'Tank {unit} missing from VehicleTypes')
@@ -371,6 +399,11 @@ def verify(original_rules, original_ai, rules_text, ai_text, csf_data, changed,
         attacking = not defending and not raiding and is_attack_script(before_ai, old_team['Script'])
         old_force = before_ai[old_team['TaskForce']]
         new_force = after_ai[new_team['TaskForce']]
+        infantry_plan = infantry_counts({key: int(entry.split(',')[0])
+                                         for key, entry in old_force.items()
+                                         if key.isdigit() and entry.split(',')[1] in infantry}) if attacking else {}
+        if attacking:
+            assert sum(int(new_force[key].split(',')[0]) for key in infantry_plan) <= INFANTRY_TEAM_CAP
         for key, entry in old_force.items():
             if not key.isdigit():
                 continue
@@ -381,7 +414,7 @@ def verify(original_rules, original_ai, rules_text, ai_text, csf_data, changed,
                 expected = 5
             elif attacking:
                 if unit in infantry:
-                    expected = count * 4
+                    expected = infantry_plan[key]
                 elif unit in TANKS:
                     expected = count * 3
             limit = int(before_rules[unit].get('BuildLimit', '0')) if unit in before_rules else 0
@@ -451,13 +484,14 @@ def build(variants=('尤里的复仇', '原版红警2')):
                          'raid_teams_without_multiplier': strength['raid_teams_without_multiplier'],
                          'kirov_raid_teams_fixed': strength['kirov_raid_teams'],
                          'attack_infantry_multiplier': 4, 'attack_tank_multiplier': 3,
+                         'attack_infantry_team_cap': INFANTRY_TEAM_CAP,
                          'attack_kirov_per_regular_team': 5,
                          'bunker_garrison_trigger_enabled': bool(bunker_trigger),
                          'defense_building_targets': defense_counts,
                          'build_limited_units': strength['build_limited'],
                          'task_force_clones': strength['clones'],
                          'changes': changed,
-                         'verification': 'INI references, regular attack strengths, preserved defense/raid teams, base defense targets, bunker garrison trigger, offensive trigger gate, CSF structure/name: passed',
+                         'verification': 'INI references, attack infantry cap and tank strengths, preserved defense/raid teams, base defense targets, bunker garrison trigger, offensive trigger gate, CSF structure/name: passed',
                          'gameplay_tested': False}
         print(f'{title}: {len(changed)} attack triggers gated; {strength["attack_teams"]} regular attack teams strengthened; '
               f'{strength["defense_teams_preserved"]} guard teams preserved and '

@@ -120,34 +120,73 @@ def repair_saved_credits(game, variant):
     print('遭遇战上次资金超出范围，已恢复为 10000；旧设置保存在', backup)
 
 
+def get_powershell_executable():
+    for name in ('pwsh', 'powershell'):
+        if shutil.which(name):
+            return name
+    return 'powershell'
+
+
+def unblock_file(path):
+    try:
+        zone = Path(f'{path}:Zone.Identifier')
+        if zone.exists():
+            zone.unlink()
+    except Exception:
+        pass
+    ps_cmd = get_powershell_executable()
+    try:
+        subprocess.run([ps_cmd, '-NoProfile', '-Command', f'Unblock-File -LiteralPath "{path}"'],
+                       check=False, capture_output=True)
+    except Exception:
+        pass
+
+
 def install(game, variant, output, title):
     managed = game / 'StartAttackMOD'
     script = managed / '管理MOD.ps1'
     state = managed / f'state-{variant}.json'
+    ps_cmd = get_powershell_executable()
     if state.exists() and json.loads(state.read_text(encoding='utf-8-sig'))['active']:
         if not script.exists():
             raise FileNotFoundError('现有 MOD 正在启用，但管理脚本缺失')
-        subprocess.run(['pwsh', '-NoProfile', '-File', str(script), '-Action', 'Disable',
-                        '-Variant', variant, '-GameDirectory', str(game)], check=True)
+        unblock_file(script)
+        subprocess.run([ps_cmd, '-ExecutionPolicy', 'Bypass', '-NoProfile', '-File', str(script),
+                        '-Action', 'Disable', '-Variant', variant, '-GameDirectory', str(game)], check=True)
     managed.mkdir(exist_ok=True)
+    unblock_file(ROOT / '管理MOD.ps1')
     shutil.copy2(ROOT / '管理MOD.ps1', script)
+    unblock_file(script)
+    bat_source = ROOT / '管理MOD.bat'
+    if bat_source.exists():
+        shutil.copy2(bat_source, managed / '管理MOD.bat')
     destination = managed / '安装文件' / title
     destination.mkdir(parents=True, exist_ok=True)
     for file in (output / title).iterdir():
         shutil.copy2(file, destination / file.name)
-    subprocess.run(['pwsh', '-NoProfile', '-File', str(script), '-Action', 'Enable',
-                    '-Variant', variant, '-GameDirectory', str(game)], check=True)
+    subprocess.run([ps_cmd, '-ExecutionPolicy', 'Bypass', '-NoProfile', '-File', str(script),
+                    '-Action', 'Enable', '-Variant', variant, '-GameDirectory', str(game)], check=True)
     repair_saved_credits(game, variant)
     return managed
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Build and install Start Attack MOD from your local game files')
-    parser.add_argument('--game', type=Path, required=True, help='RA2 or Yuri game folder')
-    parser.add_argument('--variant', choices=['YR', 'RA2'], default='YR')
-    parser.add_argument('--build-only', action='store_true', help='Prepare package without changing game files')
+    parser = argparse.ArgumentParser(description='从本地游戏文件构建并安装「开始进攻」MOD（默认支持尤里的复仇）')
+    parser.add_argument('--game', type=Path, default=None, help='红警2或尤里的复仇游戏根目录（默认支持尤里的复仇）')
+    parser.add_argument('--variant', choices=['YR', 'RA2'], default='YR', help='游戏版本：YR（尤里的复仇，默认支持）或 RA2（原版红警2）')
+    parser.add_argument('--build-only', action='store_true', help='仅生成补丁包到 _build/安装文件/，不修改游戏')
     options = parser.parse_args()
+    if not options.game:
+        try:
+            prompt_input = input('请输入游戏目录（默认支持尤里的复仇，如 D:\\Program\\Game\\RA2MD）：').strip().strip('"\'')
+        except (EOFError, KeyboardInterrupt):
+            sys.exit(1)
+        if not prompt_input:
+            sys.exit('错误：未指定游戏目录。使用 --game 参数或输入游戏目录路径。')
+        options.game = Path(prompt_input)
     game_dir = options.game.resolve(strict=True)
+    target_name = '尤里的复仇' if options.variant == 'YR' else '原版红警2'
+    print(f'目标游戏版本：{target_name}（默认支持尤里的复仇）' if options.variant == 'YR' else f'目标游戏版本：{target_name}')
     out, name = build_package(game_dir, options.variant)
     if options.build_only:
         print('补丁已生成：', out / name)

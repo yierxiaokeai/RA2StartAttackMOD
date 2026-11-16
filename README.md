@@ -1,4 +1,4 @@
-# 红警2「开始进攻」MOD
+# 红警2 / 尤里的复仇「开始进攻」MOD
 
 ## 功能
 
@@ -26,11 +26,13 @@ python export_win7.py --game "D:\Program\Game\RA2" --variant RA2
 
 ### 常规安装
 
-在 Windows 的 PowerShell 中进入本仓库，安装依赖并指定自己的游戏目录：
+在 Windows 的 PowerShell 中进入本仓库，安装依赖并指定自己的游戏目录（脚本与安装程序默认支持尤里的复仇）：
 
 ```powershell
 python -m pip install -r requirements.txt
-python install.py --game "D:\Program\Game\RA2MD" --variant YR
+
+# 默认支持尤里的复仇（--variant 默认为 YR，安装尤里的复仇时可省略该参数）：
+python install.py --game "D:\Program\Game\RA2MD"
 ```
 
 原版红警2使用已检查的 1.08 程序，命令示例：
@@ -39,14 +41,42 @@ python install.py --game "D:\Program\Game\RA2MD" --variant YR
 python install.py --game "D:\Program\Game\RA2" --variant RA2
 ```
 
+若运行 `python install.py` 时未携带 `--game` 参数，程序会进行交互输入，默认提示支持尤里的复仇路径。
+
 可先加 `--build-only`，只生成补丁包到 `_build/安装文件/`，不修改游戏。安装程序只检查正在安装的那个版本；目标游戏正在运行时会停止安装并保留已生成的包。
 
-游戏目录内的 `StartAttackMOD/管理MOD.ps1` 用于切换：
+## MOD 管理与切换（解决 PowerShell 拦截未签名脚本）
 
-```powershell
-pwsh -NoProfile -File "D:\Program\Game\RA2MD\StartAttackMOD\管理MOD.ps1" -Action Disable -Variant YR -GameDirectory "D:\Program\Game\RA2MD"
-pwsh -NoProfile -File "D:\Program\Game\RA2MD\StartAttackMOD\管理MOD.ps1" -Action Enable -Variant YR -GameDirectory "D:\Program\Game\RA2MD"
-```
+安装程序在安装时会自动处理 PowerShell 执行策略与文件锁定。日常切换或停用时，游戏目录内的 `StartAttackMOD` 目录提供了 `管理MOD.bat` 与 `管理MOD.ps1`。
+
+当 Windows PowerShell 提示「在此系统上禁止运行脚本」或未签名拦截时，可选用以下任一方式运行：
+
+1. **直接运行批处理文件（推荐）：**
+   运行游戏目录内的 `StartAttackMOD\管理MOD.bat`，脚本已内置 `-ExecutionPolicy Bypass`：
+   ```cmd
+   REM 启用 MOD（默认支持尤里的复仇）
+   "D:\Program\Game\RA2MD\StartAttackMOD\管理MOD.bat" -Action Enable -Variant YR
+
+   REM 停用 MOD 并还原原文件
+   "D:\Program\Game\RA2MD\StartAttackMOD\管理MOD.bat" -Action Disable -Variant YR
+   ```
+
+2. **在 PowerShell 命令中增加 `-ExecutionPolicy Bypass` 参数：**
+   ```powershell
+   pwsh -ExecutionPolicy Bypass -NoProfile -File "D:\Program\Game\RA2MD\StartAttackMOD\管理MOD.ps1" -Action Disable -Variant YR -GameDirectory "D:\Program\Game\RA2MD"
+   pwsh -ExecutionPolicy Bypass -NoProfile -File "D:\Program\Game\RA2MD\StartAttackMOD\管理MOD.ps1" -Action Enable -Variant YR -GameDirectory "D:\Program\Game\RA2MD"
+   ```
+   （Windows 自带 PowerShell 5.1 可将 `pwsh` 替换为 `powershell`）
+
+3. **在当前终端会话临时放行：**
+   ```powershell
+   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+   ```
+
+4. **解除下载文件安全锁定：**
+   ```powershell
+   Unblock-File "D:\Program\Game\RA2MD\StartAttackMOD\管理MOD.ps1"
+   ```
 
 脚本安装时先保存被替换的原文件；停用时还原。若上次遭遇战资金低于 5,000 或高于 500,000，安装程序会保存原 `RA2MD.INI`，并将该值设回默认的 10,000。
 

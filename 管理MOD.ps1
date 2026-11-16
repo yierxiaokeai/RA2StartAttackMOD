@@ -1,3 +1,7 @@
+<#
+.SYNOPSIS
+红警2 / 尤里的复仇「开始进攻」MOD 管理脚本（默认支持尤里的复仇）。
+#>
 param(
     [ValidateSet('Enable', 'Disable')][string]$Action = 'Enable',
     [string]$GameDirectory = (Split-Path -Parent $PSScriptRoot),
@@ -5,6 +9,10 @@ param(
     [switch]$Interactive
 )
 $ErrorActionPreference = 'Stop'
+
+if ($MyInvocation.MyCommand.Path -and (Get-Command Unblock-File -ErrorAction SilentlyContinue)) {
+    Unblock-File -LiteralPath $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue
+}
 
 function Invoke-ModChange {
     $target = [IO.Path]::GetFullPath($GameDirectory).TrimEnd('\')
@@ -16,6 +24,11 @@ function Invoke-ModChange {
         throw "游戏目录不存在：$target"
     }
     $name = if ($Variant -eq 'YR') { '尤里的复仇' } else { '原版红警2' }
+    if ($Variant -eq 'YR') {
+        Write-Host "目标游戏版本：$name（默认支持尤里的复仇）"
+    } else {
+        Write-Host "目标游戏版本：$name"
+    }
     $suffix = if ($Variant -eq 'YR') { 'md' } else { '' }
     $filenames = @("rules$suffix.ini", "ai$suffix.ini", "ra2$suffix.csf")
     $payload = Join-Path $PSScriptRoot "安装文件\$name"

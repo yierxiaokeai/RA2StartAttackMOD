@@ -118,21 +118,19 @@ internal sealed class Installer
             return "MOD 已停用，原文件已还原。";
         }
 
-        string payload = Path.Combine(package, "Payload");
-        foreach (string name in dataFiles)
-            if (!File.Exists(Path.Combine(payload, name))) throw new FileNotFoundException("离线包缺少 " + name + "。");
         string original = gameEngine;
         if (state != null && state.active)
             foreach (OriginalFile entry in state.originals)
                 if (String.Equals(entry.name, engine, StringComparison.OrdinalIgnoreCase))
                     original = Path.Combine(state.backupDirectory, engine);
         byte[] modified = PatchEngine(File.ReadAllBytes(original));
+        Dictionary<string, byte[]> payload = LoadPayload(game, state);
 
         if (state != null && state.active) Restore(game, managed, statePath, state);
         string staged = Path.Combine(Path.Combine(managed, "安装文件"), gameTitle);
         Directory.CreateDirectory(staged);
         foreach (string name in dataFiles)
-            File.Copy(Path.Combine(payload, name), Path.Combine(staged, name), true);
+            File.WriteAllBytes(Path.Combine(staged, name), payload[name]);
         File.WriteAllBytes(Path.Combine(staged, engine), modified);
         string manager = Path.Combine(managed, "管理MOD.ps1");
         if (!File.Exists(manager))
@@ -201,6 +199,111 @@ internal sealed class Installer
             Buffer.BlockCopy(after, 0, data, offset, after.Length);
         }
         return data;
+    }
+
+    private Dictionary<string, byte[]> LoadPayload(string game, ModState state)
+    {
+        string folder = Path.Combine(package, "Payload");
+        string recipe = Path.Combine(package, "Resources.xml");
+        Dictionary<string, byte[]> result = new Dictionary<string, byte[]>();
+        if (File.Exists(recipe))
+        {
+            XmlDocument document = new XmlDocument();
+            document.XmlResolver = null;
+            document.Load(recipe);
+            result.Add("sgsticon.shp", File.ReadAllBytes(Path.Combine(folder, "sgsticon.shp")));
+            foreach (XmlElement entry in document.DocumentElement.SelectNodes("Resource"))
+            {
+                string name = entry.GetAttribute("name");
+                try { result.Add(name, ReadResource(game, state, entry)); }
+                catch (IOException error)
+                {
+                    throw new IOException("无法应用 " + name + "：请使用发布说明指定的原版游戏资源。", error);
+                }
+                catch (InvalidDataException error)
+                {
+                    throw new InvalidDataException("游戏资源与发布包不匹配：" + name + "。", error);
+                }
+            }
+        }
+        else
+            foreach (string name in dataFiles)
+                result.Add(name, File.ReadAllBytes(Path.Combine(folder, name)));
+        foreach (string name in dataFiles)
+            if (!result.ContainsKey(name)) throw new InvalidDataException("补丁包缺少 " + name + "。");
+        return result;
+    }
+
+    private static int Number(XmlElement entry, string key)
+    {
+        return Int32.Parse(entry.GetAttribute(key), CultureInfo.InvariantCulture);
+    }
+
+    private static byte[] ReadResource(string game, ModState state, XmlElement entry)
+    {
+        string label = entry.GetAttribute("appendLabel");
+        if (label.Length != 0)
+        {
+            string name = entry.GetAttribute("name");
+            string loose = Path.Combine(game, name);
+            if (state != null && state.active)
+                foreach (OriginalFile item in state.originals)
+                    if (String.Equals(item.name, name, StringComparison.OrdinalIgnoreCase))
+                        loose = Path.Combine(state.backupDirectory, name);
+            if (File.Exists(loose)) return AppendLabel(File.ReadAllBytes(loose), label, entry.GetAttribute("labelText"));
+        }
+        string archive = entry.GetAttribute("archive");
+        byte[] original = new byte[Number(entry, "length")];
+        using (FileStream file = File.OpenRead(Path.Combine(game, archive)))
+        using (BinaryReader reader = new BinaryReader(file))
+        {
+            int offset = Number(entry, "offset");
+            if (file.Length != Number(entry, "archiveLength") || offset < 0 || offset > file.Length - original.Length)
+                throw new InvalidDataException("MIX 文件布局不匹配。");
+            file.Position = offset;
+            original = reader.ReadBytes(original.Length);
+        }
+        foreach (XmlElement guard in entry.SelectNodes("Guard"))
+            CheckBytes(original, Number(guard, "offset"), Convert.FromBase64String(guard.InnerText));
+        if (label.Length != 0) return AppendLabel(original, label, entry.GetAttribute("labelText"));
+        if (!entry.HasChildNodes || entry.SelectNodes("Copy|Add").Count == 0) return original;
+        using (MemoryStream output = new MemoryStream())
+        {
+            foreach (XmlElement part in entry.ChildNodes)
+            {
+                if (part.Name == "Copy") output.Write(original, Number(part, "offset"), Number(part, "length"));
+                else if (part.Name == "Add")
+                {
+                    byte[] added = Convert.FromBase64String(part.InnerText);
+                    output.Write(added, 0, added.Length);
+                }
+            }
+            return output.ToArray();
+        }
+    }
+
+    private static byte[] AppendLabel(byte[] data, string label, string text)
+    {
+        if (data.Length < 24 || BitConverter.ToInt32(data, 0) != 0x43534620 ||
+            Encoding.ASCII.GetString(data).IndexOf(label, StringComparison.OrdinalIgnoreCase) >= 0)
+            throw new InvalidDataException("语言文件无效或已包含 MOD 标签。");
+        using (MemoryStream stream = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(stream))
+        {
+            writer.Write(data, 0, 8);
+            writer.Write(checked(BitConverter.ToInt32(data, 8) + 1));
+            writer.Write(checked(BitConverter.ToInt32(data, 12) + 1));
+            writer.Write(data, 16, data.Length - 16);
+            writer.Write(Encoding.ASCII.GetBytes(" LBL"));
+            writer.Write(1);
+            byte[] name = Encoding.ASCII.GetBytes(label);
+            writer.Write(name.Length);
+            writer.Write(name);
+            writer.Write(Encoding.ASCII.GetBytes(" RTS"));
+            writer.Write(text.Length);
+            foreach (byte value in Encoding.Unicode.GetBytes(text)) writer.Write((byte)~value);
+            return stream.ToArray();
+        }
     }
 
     private static void CheckBytes(byte[] data, int offset, byte[] expected)

@@ -14,7 +14,9 @@
 
 ### Windows 7 SP1
 
-用已启用 .NET Framework 3.5 的 Windows 构建机生成离线包。将压缩包复制到 Win7，完整解压后双击 `StartAttack-Win7.exe`，选择游戏目录。Win7 安装端使用系统自带的 .NET Framework 3.5.1，无需 Python、PowerShell 或联网。所有遭遇战功能与常规版相同。
+可从 [Releases](../../releases) 下载对应的 `-Patch.zip`。完整解压后双击 `StartAttack-Win7.exe`，选择游戏目录。发布包从本机游戏程序及 MIX 资源应用补丁，适用于文件布局匹配的基础游戏。
+
+如果发布包提示游戏文件不匹配，用已启用 .NET Framework 3.5 的 Windows 构建机生成对应的离线包。Win7 安装端使用系统自带的 .NET Framework 3.5.1，无需 Python、PowerShell 或联网。所有遭遇战功能与常规版相同。
 
 ```powershell
 python -m pip install -r requirements.txt
@@ -22,7 +24,7 @@ python export_win7.py --game "D:\Program\Game\RA2MD" --variant YR
 python export_win7.py --game "D:\Program\Game\RA2" --variant RA2
 ```
 
-压缩包位于 `_build/`。使用与目标机同版本、同语言的基础游戏生成；安装时会检查游戏程序的布局和补丁位置。停用方法见 [Win7 离线安装说明](Win7.md)。
+压缩包位于 `_build/`。使用与目标机同版本、同语言的基础游戏生成。加 `--release` 可导出只含差分和 MOD 自有文件的发布包。停用方法见 [Win7 离线安装说明](Win7.md)。
 
 ### 常规安装
 

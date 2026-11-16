@@ -12,6 +12,20 @@
 
 ## 安装
 
+### Windows 7 SP1
+
+用已启用 .NET Framework 3.5 的 Windows 构建机生成离线包。将压缩包复制到 Win7，完整解压后双击 `StartAttack-Win7.exe`，选择游戏目录。Win7 安装端使用系统自带的 .NET Framework 3.5.1，无需 Python、PowerShell 或联网。所有遭遇战功能与常规版相同。
+
+```powershell
+python -m pip install -r requirements.txt
+python export_win7.py --game "D:\Program\Game\RA2MD" --variant YR
+python export_win7.py --game "D:\Program\Game\RA2" --variant RA2
+```
+
+压缩包位于 `_build/`。使用与目标机同版本、同语言的基础游戏生成；安装时会检查游戏程序的布局和补丁位置。停用方法见 [Win7 离线安装说明](Win7.md)。
+
+### 常规安装
+
 在 Windows 的 PowerShell 中进入本仓库，安装依赖并指定自己的游戏目录：
 
 ```powershell
@@ -44,7 +58,7 @@ pwsh -NoProfile -File "D:\Program\Game\RA2MD\StartAttackMOD\管理MOD.ps1" -Acti
 
 ## 补丁内容与验证
 
-仓库只保存构建脚本和自绘图标。安装程序从你本机的 `ra2.mix`、`ra2md.mix`、语言资源和原游戏程序读取基础文件，在 `_build/` 生成完整补丁，再安装到游戏目录；仓库不上传游戏原始程序、原始图形或完整规则文件。
+仓库提供构建与安装脚本及 MOD 图标。构建工具从你本机的 `ra2.mix`、`ra2md.mix`、语言资源和原游戏程序读取基础文件，在 `_build/` 生成完整补丁。仓库不上传游戏原始程序、原始图形或完整规则文件。
 
 两套规则已检查建筑注册、资金范围、图标引用、常规进攻步兵上限、守家与偷袭编组原规模、基地防御建筑目标数量，以及识别出的主动进攻触发：尤里版 136 条，原版 89 条。尤里版还检查了碉堡驻兵队伍及触发的难度开关。两个版本的程序修正均通过滑块初始化与实际滑块处理代码的 x86 模拟测试，涵盖 5,000–500,000 的范围、位置设定和读回；排序比较函数也通过模拟测试。防御建筑数量是电脑的建造目标上限，实际数量仍取决于地图空间、资金和战局。真实游戏界面和遭遇战尚需在使用者环境中验证。
 
